@@ -146,8 +146,9 @@ function gauge(ctx, x, y, w, h, fraction, color, labelText) {
 /**
  * Draw the full HUD. `plane` is the aircraft, `world` the archipelago state,
  * `mission` the active sortie, `score`, `elapsed` seconds and `best` score.
+ * `objectiveOverride` replaces the next-objective line when given.
  */
-export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted) {
+export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted, objectiveOverride, cockpit) {
   const headingDeg = (plane.heading * 180) / Math.PI;
   const altM = Math.max(0, Math.round(plane.y));
   const altFt = Math.round(plane.y * 3.28084);
@@ -169,14 +170,15 @@ export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted)
 
   drawCompassTape(ctx, headingDeg);
 
-  // Top-right: score, timer, rings.
+  // Top-right: score, timer, rings. A time-limit mission counts down instead.
   panel(ctx, 1046, 12, 218, 96);
   label(ctx, 'SCORE', 1058, 30);
   bigValue(ctx, String(score), 1058, 58, PALETTE.hudAmber);
-  label(ctx, 'TIME', 1058, 82);
-  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
-  const ss = String(Math.floor(elapsed % 60)).padStart(2, '0');
-  ctx.fillStyle = PALETTE.hudText;
+  label(ctx, mission.timeLimit ? 'TIME LEFT' : 'TIME', 1058, 82);
+  const shown = mission.timeLimit ? Math.max(0, mission.timeLimit - elapsed) : elapsed;
+  const mm = String(Math.floor(shown / 60)).padStart(2, '0');
+  const ss = String(Math.floor(shown % 60)).padStart(2, '0');
+  ctx.fillStyle = mission.timeLimit && shown < 30 ? PALETTE.hudRed : PALETTE.hudText;
   ctx.font = 'bold 20px ' + FONT_MONO;
   ctx.textAlign = 'left';
   ctx.fillText(`${mm}:${ss}`, 1058, 104);
@@ -204,13 +206,17 @@ export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted)
   }
   ctx.textAlign = 'left';
 
-  // Bottom-left: attitude ball + throttle + fuel.
-  panel(ctx, 16, 560, 218, 144);
-  drawAttitude(ctx, plane.pitch, plane.roll, 76, 632, 42);
-  label(ctx, 'PITCH ' + (plane.pitch >= 0 ? '+' : '') + Math.round(plane.pitch) + '°', 132, 606);
-  label(ctx, 'BANK ' + (plane.roll >= 0 ? '+' : '') + Math.round(plane.roll) + '°', 132, 628);
-  label(ctx, 'HDG ' + String(Math.round(((headingDeg % 360) + 360) % 360)).padStart(3, '0') + '°', 132, 650);
-  label(ctx, 'V/S ' + (plane.verticalSpeed >= 0 ? '+' : '') + plane.verticalSpeed.toFixed(1) + ' m/s', 132, 672);
+  // Bottom-left: attitude ball + pitch/bank/heading/vertical-speed. In cockpit
+  // mode the 3D instrument panel carries its own attitude ball, so the 2D one
+  // is hidden to avoid drawing two balls on top of each other.
+  if (!cockpit) {
+    panel(ctx, 16, 560, 218, 144);
+    drawAttitude(ctx, plane.pitch, plane.roll, 76, 632, 42);
+    label(ctx, 'PITCH ' + (plane.pitch >= 0 ? '+' : '') + Math.round(plane.pitch) + '°', 132, 606);
+    label(ctx, 'BANK ' + (plane.roll >= 0 ? '+' : '') + Math.round(plane.roll) + '°', 132, 628);
+    label(ctx, 'HDG ' + String(Math.round(((headingDeg % 360) + 360) % 360)).padStart(3, '0') + '°', 132, 650);
+    label(ctx, 'V/S ' + (plane.verticalSpeed >= 0 ? '+' : '') + plane.verticalSpeed.toFixed(1) + ' m/s', 132, 672);
+  }
   gauge(ctx, 16, 470, 150, 58, plane.throttle, '#5db9ff', 'THROTTLE');
   gauge(
     ctx, 16, 392, 150, 58, plane.fuel / 100,
@@ -228,9 +234,9 @@ export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted)
   ctx.font = '13px ' + FONT;
   const ring = world.nextRing();
   const ringDz = ring ? ring.z - plane.z : 0;
-  const objective = ring
+  const objective = objectiveOverride || (ring
     ? `Next: ring ${ring.label} — ${Math.abs(Math.round(ringDz))} m ${ringDz >= 0 ? 'ahead' : 'behind'}`
-    : `Land on runway 36 — ${Math.max(0, Math.round(RUNWAY.zStart - plane.z))} m ahead`;
+    : `Land on runway 36 — ${Math.max(0, Math.round(RUNWAY.zStart - plane.z))} m ahead`);
   ctx.fillText(objective, 998, 624);
   ctx.fillStyle = 'rgba(180,230,255,0.85)';
   ctx.fillText(mission.goal, 998, 646, 254);
