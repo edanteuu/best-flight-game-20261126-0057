@@ -1,185 +1,158 @@
-// The aircraft itself: a stylised single-prop island airlift plane, drawn in canvas
-// vector art from behind and slightly above — the chase view the pilot flies from.
-// It banks with the roll, its navigation lights blink, and its propeller blurs with
-// the throttle. No image files: every line here is drawn, so it always matches the
-// game's one flat, sunny style.
+// The aircraft itself, built in real 3D: a single-prop island airlift plane made
+// from primitives — fuselage, wings, tail, spinning propeller, navigation lights
+// and fixed gear — painted in the chosen livery. No image files: every part is
+// geometry and material, so the plane always matches the game's style and the
+// dossier never carries borrowed art.
+//
+// Local space: nose points +z, wingspan along x, up is +y. The renderer orients
+// the group with rotation order YXZ: yaw = heading, pitch = -pitch, roll = -roll.
 
-import { PALETTE } from './config.js';
+import * as THREE from 'three';
+
+function std(color, metalness, roughness, extra) {
+  return new THREE.MeshStandardMaterial({
+    color, metalness: metalness ?? 0.35, roughness: roughness ?? 0.45, ...(extra || {}),
+  });
+}
 
 /**
- * Draw the plane centred at (cx, cy) on `ctx`, banked by `rollDeg` degrees
- * (positive = right wing down) and scaled by `scale`. `time` drives the prop
- * blur and the blinking nav lights; `throttle` sets the prop blur.
+ * Build the plane for `livery` ({ body, accent, trim } colours).
+ * Returns the group; its userData holds the animated parts:
+ * propeller (spins), navLeft/navRight/strobe (blink), gear.
  */
-export function drawAircraft(ctx, cx, cy, rollDeg, scale, time, throttle, stalled) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((rollDeg * Math.PI) / 180);
-  ctx.scale(scale, scale);
+export function buildAircraft(livery) {
+  const group = new THREE.Group();
+  const body = std(livery.body, 0.4, 0.4);
+  const accent = std(livery.accent, 0.3, 0.5);
+  const trim = std(livery.trim, 0.5, 0.35);
+  const dark = std(0x1c2733, 0.7, 0.3);
+  const glass = std(0x0d2436, 0.9, 0.12);
+  const tyre = std(0x141414, 0.1, 0.9);
 
-  const red = PALETTE.planeRed;
-  const white = PALETTE.planeWhite;
-  const blue = PALETTE.planeBlue;
+  // Fuselage: a rounded body, nose forward. Cylinder along z + a nose cap.
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.75, 7.6, 20), body);
+  fuselage.rotation.x = Math.PI / 2;
+  fuselage.position.set(0, 0, 0.2);
+  fuselage.castShadow = true;
+  group.add(fuselage);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.95, 20, 14), body);
+  nose.scale.set(1, 0.92, 1.15);
+  nose.position.set(0, 0, 4.0);
+  nose.castShadow = true;
+  group.add(nose);
+  const tailCone = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.28, 2.6, 14), body);
+  tailCone.rotation.x = Math.PI / 2;
+  tailCone.position.set(0, 0.25, -4.6);
+  tailCone.castShadow = true;
+  group.add(tailCone);
+  // Belly stripe in the accent colour.
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.28, 6.4), accent);
+  stripe.position.set(0, -0.62, 0.4);
+  group.add(stripe);
 
-  // Soft shadow on the sea below the aircraft, so it reads as flying, not pasted.
-  ctx.save();
-  ctx.translate(0, 96);
-  ctx.scale(1, 0.28);
-  ctx.fillStyle = 'rgba(0, 20, 40, 0.28)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 150, 26, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  // Cabin windows: a dark glass band across the fuselage sides + windshield.
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.62, 2.6), glass);
+  cabin.position.set(0, 0.42, 1.6);
+  group.add(cabin);
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 0.3), glass);
+  windshield.position.set(0, 0.5, 3.1);
+  windshield.rotation.x = -0.5;
+  group.add(windshield);
 
-  // Main wings: long, slightly tapered, red tips.
-  ctx.fillStyle = white;
-  ctx.strokeStyle = 'rgba(20, 40, 70, 0.55)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(-168, 6);
-  ctx.quadraticCurveTo(-120, -16, -28, -8);
-  ctx.lineTo(28, -8);
-  ctx.quadraticCurveTo(120, -16, 168, 6);
-  ctx.quadraticCurveTo(120, 16, 30, 12);
-  ctx.lineTo(-30, 12);
-  ctx.quadraticCurveTo(-120, 16, -168, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  // Red wingtips.
-  ctx.fillStyle = red;
-  ctx.beginPath();
-  ctx.moveTo(-168, 6);
-  ctx.quadraticCurveTo(-150, -8, -128, -10);
-  ctx.lineTo(-128, 12);
-  ctx.quadraticCurveTo(-150, 14, -168, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(168, 6);
-  ctx.quadraticCurveTo(150, -8, 128, -10);
-  ctx.lineTo(128, 12);
-  ctx.quadraticCurveTo(150, 14, 168, 6);
-  ctx.closePath();
-  ctx.fill();
-
-  // Fuselage: a short, rounded body seen from behind — the tail is nearest the
-  // viewer (bottom of the shape) and the nose points away (top), so the body
-  // reads foreshortened, not like a top-down plan view.
-  ctx.fillStyle = white;
-  ctx.beginPath();
-  ctx.moveTo(-34, -44);
-  ctx.quadraticCurveTo(0, -60, 34, -44);
-  ctx.quadraticCurveTo(42, -6, 30, 46);
-  ctx.quadraticCurveTo(0, 58, -30, 46);
-  ctx.quadraticCurveTo(-42, -6, -34, -44);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = red;
-  ctx.beginPath();
-  ctx.moveTo(-36, -22);
-  ctx.quadraticCurveTo(0, -32, 36, -22);
-  ctx.lineTo(34, -8);
-  ctx.quadraticCurveTo(0, -18, -34, -8);
-  ctx.closePath();
-  ctx.fill();
-  // "NUSA AIRLIFT" on the tail cone, sized to fit the fuselage width.
-  ctx.fillStyle = blue;
-  ctx.font = 'bold 9px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('NUSA AIRLIFT', 0, 34);
-
-  // Cabin windows: three lit panes across the rear fuselage.
-  ctx.fillStyle = '#bfe8ff';
-  ctx.strokeStyle = 'rgba(20, 40, 70, 0.6)';
-  ctx.lineWidth = 1.5;
-  for (let i = -1; i <= 1; i += 1) {
-    ctx.beginPath();
-    ctx.roundRect(i * 17 - 7, -42, 14, 11, 4);
-    ctx.fill();
-    ctx.stroke();
+  // Main wings: two halves with a slight dihedral, accent wingtips.
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.28, 2.3), body);
+    wing.position.set(side * 3.9, 0.22, 0.6);
+    wing.rotation.z = side * 0.07;
+    wing.castShadow = true;
+    group.add(wing);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 2.3), accent);
+    tip.position.set(side * 6.9, 0.46, 0.6);
+    tip.rotation.z = side * 0.07;
+    group.add(tip);
   }
 
-  // Tailplane and tall fin, nearest the viewer at the tail.
-  ctx.fillStyle = white;
-  ctx.beginPath();
-  ctx.moveTo(-64, -42);
-  ctx.lineTo(64, -42);
-  ctx.lineTo(52, -30);
-  ctx.lineTo(-52, -30);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = red;
-  ctx.beginPath();
-  ctx.moveTo(-13, -46);
-  ctx.lineTo(0, -92);
-  ctx.lineTo(13, -46);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = blue;
-  ctx.beginPath();
-  ctx.moveTo(-6, -50);
-  ctx.lineTo(0, -82);
-  ctx.lineTo(6, -50);
-  ctx.closePath();
-  ctx.fill();
+  // Tailplane and tall fin.
+  const tailplane = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.22, 1.5), body);
+  tailplane.position.set(0, 0.35, -4.9);
+  tailplane.castShadow = true;
+  group.add(tailplane);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.4, 1.9), accent);
+  fin.position.set(0, 1.35, -4.9);
+  fin.castShadow = true;
+  group.add(fin);
+  const finTrim = new THREE.Mesh(new THREE.BoxGeometry(0.26, 1.5, 1.1), trim);
+  finTrim.position.set(0, 1.15, -4.9);
+  group.add(finTrim);
 
-  // Propeller: at the nose, far from the viewer, it reads as a thin blurred
-  // disc seen edge-on, not a bubble over the fuselage.
-  const blur = 0.16 + throttle * 0.35;
-  ctx.fillStyle = `rgba(210, 225, 238, ${blur})`;
-  ctx.beginPath();
-  ctx.ellipse(0, -52, 34, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
-  const bladeAngle = time * (6 + throttle * 26);
-  ctx.strokeStyle = 'rgba(40, 50, 60, 0.65)';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  for (let b = 0; b < 2; b += 1) {
-    const a = bladeAngle + b * Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(0, -52);
-    ctx.lineTo(Math.cos(a) * 32, -52 + Math.sin(a) * 7);
-    ctx.stroke();
+  // Propeller: hub + two blades + a translucent blur disc, spinning around z.
+  const propeller = new THREE.Group();
+  propeller.position.set(0, 0, 5.05);
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 10), accent);
+  propeller.add(hub);
+  for (const a of [0, Math.PI]) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.4, 0.1), dark);
+    blade.rotation.z = a;
+    propeller.add(blade);
   }
-  // Spinner.
-  ctx.fillStyle = red;
-  ctx.beginPath();
-  ctx.arc(0, -52, 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(20, 40, 70, 0.5)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(1.75, 32),
+    new THREE.MeshBasicMaterial({ color: 0xd2e1ee, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  propeller.add(disc);
+  group.add(propeller);
 
-  // Navigation lights: green left, red right, blinking white strobe on the tail.
+  // Fixed landing gear: two mains and a tail wheel.
+  for (const side of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 8), dark);
+    leg.position.set(side * 1.15, -0.95, 1.2);
+    group.add(leg);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.3, 14), tyre);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(side * 1.15, -1.5, 1.2);
+    group.add(wheel);
+  }
+  const tailWheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.2, 10), tyre);
+  tailWheel.rotation.z = Math.PI / 2;
+  tailWheel.position.set(0, -0.75, -4.6);
+  group.add(tailWheel);
+
+  // Navigation lights: green left, red right, white strobe on the tail.
+  const navLeft = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0x0a3d1e, emissive: 0x37ff7a, emissiveIntensity: 1.6 }),
+  );
+  navLeft.position.set(-7.45, 0.28, 0.6);
+  group.add(navLeft);
+  const navRight = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3d0a0a, emissive: 0xff5252, emissiveIntensity: 1.6 }),
+  );
+  navRight.position.set(7.45, 0.28, 0.6);
+  group.add(navRight);
+  const strobe = new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffffff, emissiveIntensity: 0 }),
+  );
+  strobe.position.set(0, 2.6, -4.9);
+  group.add(strobe);
+
+  group.userData = { propeller, navLeft, navRight, strobe, body, accent, trim };
+  return group;
+}
+
+/** Recolour an existing plane group with a new livery (Hangar). */
+export function applyLivery(group, livery) {
+  const { body, accent, trim } = group.userData;
+  body.color.set(livery.body);
+  accent.color.set(livery.accent);
+  trim.color.set(livery.trim);
+}
+
+/** Animate the plane's moving parts: propeller spin and the blinking strobe. */
+export function updateAircraft(group, plane, time) {
+  const { propeller, strobe } = group.userData;
+  propeller.rotation.z = time * (6 + plane.throttle * 26);
   const blink = Math.sin(time * 6) > 0;
-  ctx.fillStyle = blink ? '#37ff7a' : 'rgba(55, 255, 122, 0.35)';
-  ctx.beginPath();
-  ctx.arc(-168, 6, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = blink ? '#ff5252' : 'rgba(255, 82, 82, 0.35)';
-  ctx.beginPath();
-  ctx.arc(168, 6, 5, 0, Math.PI * 2);
-  ctx.fill();
-  if (blink) {
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(0, -92, 4, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Stall warning: the wings shudder — a small jitter the pilot can see and feel.
-  if (stalled) {
-    ctx.strokeStyle = 'rgba(255, 93, 93, 0.9)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-40, -84);
-    ctx.lineTo(40, -84);
-    ctx.stroke();
-  }
-
-  ctx.restore();
+  strobe.material.emissiveIntensity = blink ? 4 : 0;
 }
