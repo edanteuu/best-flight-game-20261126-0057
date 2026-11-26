@@ -28,6 +28,23 @@ export const RUNWAY = {
   heading: 0,
 };
 
+/** The beach airstrip on Pulau Pasir — the rescue pickup point. */
+export const BEACH = {
+  x: 3600,
+  zStart: 2200,
+  length: 400,
+  width: 36,
+  heading: 0,
+  name: 'Pulau Pasir',
+};
+
+/** Paint schemes for the plane (Hangar). Each: body, accent, trim. */
+export const LIVERIES = [
+  { id: 'nusa', name: 'NUSA RED', body: '#f4f6f8', accent: '#d43d2a', trim: '#1e5fa8' },
+  { id: 'ocean', name: 'OCEAN BLUE', body: '#eef4f8', accent: '#1e5fa8', trim: '#d43d2a' },
+  { id: 'sunset', name: 'SUNSET GOLD', body: '#fdf6e3', accent: '#e8a100', trim: '#7a3b12' },
+];
+
 export const COURSE_LENGTH = 11200;
 
 export const PALETTE = {
