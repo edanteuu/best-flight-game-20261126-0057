@@ -52,9 +52,9 @@ export function stageShot(name, world, plane, mission) {
   if (name === 'land') {
     world.state.rings.forEach((r) => { r.passed = true; });
     world.state.ringIndex = world.state.ringsTotal;
-    // Just past the last ring, 400 m short of the threshold: the runway strip
+    // Just past the last ring, 450 m short of the threshold: the runway strip
     // fills the centre of the frame and the volcano rises behind it.
-    posePlane(plane, { x: 0, y: 70, z: 9400, heading: 0, pitch: -4, roll: 0, speed: 100, throttle: 0.3, fuel: 34, vs: -3.0 });
+    posePlane(plane, { x: 0, y: 85, z: 9350, heading: 0, pitch: -4, roll: 0, speed: 100, throttle: 0.3, fuel: 34, vs: -3.0 });
     return { screen: SCREEN_LAND, score: 1180, elapsed: 238, best: 1240 };
   }
   // start (and anything unknown): title over the islands, plane in level cruise
