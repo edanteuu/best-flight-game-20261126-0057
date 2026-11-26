@@ -11,6 +11,13 @@ export const ACTION_MUTE = 8;
 export const ACTION_MISSION_1 = 16;
 export const ACTION_MISSION_2 = 32;
 export const ACTION_MISSION_3 = 64;
+export const ACTION_MISSION_4 = 128;
+export const ACTION_MISSION_5 = 256;
+export const ACTION_MISSION_6 = 512;
+export const ACTION_MISSION_7 = 1024;
+export const ACTION_MISSION_8 = 2048;
+export const ACTION_FREE_FLIGHT = 4096;
+export const ACTION_COCKPIT = 8192;
 
 const ROLL_LEFT = new Set(['ArrowLeft', 'KeyA']);
 const ROLL_RIGHT = new Set(['ArrowRight', 'KeyD']);
@@ -57,6 +64,13 @@ export function createInput(target) {
     } else if (event.code === 'Digit1' && !event.repeat) actions |= ACTION_MISSION_1;
     else if (event.code === 'Digit2' && !event.repeat) actions |= ACTION_MISSION_2;
     else if (event.code === 'Digit3' && !event.repeat) actions |= ACTION_MISSION_3;
+    else if (event.code === 'Digit4' && !event.repeat) actions |= ACTION_MISSION_4;
+    else if (event.code === 'Digit5' && !event.repeat) actions |= ACTION_MISSION_5;
+    else if (event.code === 'Digit6' && !event.repeat) actions |= ACTION_MISSION_6;
+    else if (event.code === 'Digit7' && !event.repeat) actions |= ACTION_MISSION_7;
+    else if (event.code === 'Digit8' && !event.repeat) actions |= ACTION_MISSION_8;
+    else if (event.code === 'Digit9' && !event.repeat) actions |= ACTION_FREE_FLIGHT;
+    else if (event.code === 'KeyC' && !event.repeat) actions |= ACTION_COCKPIT;
     else return;
     event.preventDefault();
   });
