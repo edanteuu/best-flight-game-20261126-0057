@@ -3,7 +3,7 @@
 // from a seeded random, so the same seed always builds the same islands — the
 // screenshots and every mission fly the same map. No drawing lives here, only data.
 
-import { COURSE_LENGTH, RUNWAY } from './config.js';
+import { BEACH, COURSE_LENGTH, RUNWAY } from './config.js';
 import { range } from './random.js';
 
 /** A landmass: a sand beach ring, green interior and, on the big one, a volcano peak. */
@@ -76,12 +76,42 @@ export function createWorld(random) {
   }
 
   /** Ground height under (x, z): the volcano peak, island hills, else sea level 0.
-   * The runway strip is flat ground, so a touchdown there reads as a landing
-   * and anywhere else reads as a crash into terrain or water. */
+   * The runway strip and the beach strip are flat ground, so a touchdown there
+   * reads as a landing and anywhere else reads as a crash into terrain or water.
+   * Each strip also gets a cleared approach corridor: the ground under the final
+   * is capped to a gentle glide slope (about 5 degrees) down to the threshold,
+   * so a pilot can actually fly the approach instead of meeting a cliff — the
+   * big island's north slope rises to 128 m right at the runway threshold. */
   function groundHeight(x, z) {
     // The runway strip is flat ground.
     if (Math.abs(x - RUNWAY.x) < RUNWAY.width / 2 + 30
       && z > RUNWAY.zStart - 60 && z < RUNWAY.zStart + RUNWAY.length + 60) return 2;
+    // The beach strip on Pulau Pasir is flat ground too.
+    if (Math.abs(x - BEACH.x) < BEACH.width / 2 + 24
+      && z > BEACH.zStart - 40 && z < BEACH.zStart + BEACH.length + 40) return 2;
+    // Cleared approach valleys: the ground is carved to a gentle glide slope
+    // down to each threshold (final fix: 110 m at 1400 m out for runway 36),
+    // with a flat valley floor beside the strip and sides rising away from it,
+    // so the approach reads as a broad green valley, not a canyon carved
+    // through the volcano slope — the big island's north slope rises to 128 m
+    // right at the runway threshold.
+    if (z > RUNWAY.zStart - 1500 && z < RUNWAY.zStart + RUNWAY.length + 60
+      && Math.abs(x - RUNWAY.x) < 450) {
+      const cap = 2 + Math.max(0, RUNWAY.zStart - z) * 0.06
+        + Math.max(0, Math.abs(x - RUNWAY.x) - 133) * 0.35;
+      return Math.min(terrainHeight(x, z), cap);
+    }
+    if (z > BEACH.zStart - 700 && z < BEACH.zStart + BEACH.length + 40
+      && Math.abs(x - BEACH.x) < 320) {
+      const cap = 2 + Math.max(0, BEACH.zStart - z) * 0.07
+        + Math.max(0, Math.abs(x - BEACH.x) - 78) * 0.35;
+      return Math.min(terrainHeight(x, z), cap);
+    }
+    return terrainHeight(x, z);
+  }
+
+  /** Raw terrain height: island hills and the volcano peak, else sea level 0. */
+  function terrainHeight(x, z) {
     let height = 0;
     for (const island of islands) {
       const dx = x - island.x;
@@ -112,5 +142,14 @@ export function createWorld(random) {
       && z >= RUNWAY.zStart && z <= RUNWAY.zStart + RUNWAY.length;
   }
 
-  return { state, layRings, nextRing, groundHeight, isLand, overRunway };
+  /** The landing strip under (x, z), or null: 'runway' (Nusa Besar, runway 36)
+   * or 'beach' (Pulau Pasir). A touchdown on either strip is a legal landing. */
+  function landingStrip(x, z) {
+    if (overRunway(x, z)) return 'runway';
+    if (Math.abs(x - BEACH.x) < BEACH.width / 2
+      && z >= BEACH.zStart && z <= BEACH.zStart + BEACH.length) return 'beach';
+    return null;
+  }
+
+  return { state, layRings, nextRing, groundHeight, isLand, overRunway, landingStrip };
 }
