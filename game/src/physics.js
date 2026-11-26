@@ -29,6 +29,7 @@ export function createPlane() {
     stalled: false,
     airborne: false,
     flaps: false,
+    landedStrip: null, // 'runway' | 'beach' | null — which strip the last touchdown used
   };
 }
 
@@ -110,17 +111,18 @@ export function stepFlight(plane, steer, dt, world, wind) {
   // --- Ground contact -------------------------------------------------------
   const ground = world.groundHeight(plane.x, plane.z);
   if (plane.y <= ground + 1.5 && plane.airborne) {
-    const onRunway = world.overRunway(plane.x, plane.z);
+    const strip = world.landingStrip(plane.x, plane.z);
     const sink = -plane.verticalSpeed;
     const aligned = Math.abs(plane.heading) < 0.22 && Math.abs(plane.roll) < 18;
-    if (onRunway && sink < 7 && plane.speed < 120 && aligned) {
+    if (strip && sink < 7 && plane.speed < 120 && aligned) {
       plane.y = ground + 1.5;
       plane.airborne = false;
       plane.speed = Math.max(0, plane.speed - 26 * dt);
+      plane.landedStrip = strip;
       if (sink > 4.5) events |= EVENT_HARD_LANDING;
       else events |= EVENT_LANDED;
     } else {
-      // Water, jungle or a runway hit too hard or too fast: the flight is over.
+      // Water, jungle or a strip hit too hard or too fast: the flight is over.
       plane.y = ground + 1.5;
       plane.damage = 100;
       events |= EVENT_CRASHED;
@@ -149,4 +151,5 @@ export function resetPlane(plane, fuel) {
   plane.stalled = false;
   plane.airborne = false;
   plane.flaps = false;
+  plane.landedStrip = null;
 }
