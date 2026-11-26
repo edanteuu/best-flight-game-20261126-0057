@@ -4,27 +4,30 @@
 // paused, landed, complete and crash. Scores live in memory only — no storage,
 // no cookies — so every visit starts fresh.
 //
+// The 3D scene paints on the #game canvas (WebGL, Three.js); the HUD and the menu
+// overlays paint on the #hud canvas (2D) stacked above it.
+//
 // ?seed=N fixes the archipelago. ?shot=start|play|rings|land (with &seed=N) stages
 // that scene instead of running the loop, paints it twice and sets
 // window.__shotReady for a screenshot.
-import { STEP } from './config.js';
+import { FONT, LIVERIES, PALETTE, RUNWAY, SHOT_TIME, STEP, VIEW } from './config.js';
 import { createRandom } from './random.js';
 import { createWorld } from './world.js';
 import {
-  ACTION_CONFIRM, ACTION_MISSION_1, ACTION_MISSION_2, ACTION_MISSION_3,
+  ACTION_COCKPIT, ACTION_CONFIRM, ACTION_FREE_FLIGHT,
+  ACTION_MISSION_1, ACTION_MISSION_2, ACTION_MISSION_3, ACTION_MISSION_4,
+  ACTION_MISSION_5, ACTION_MISSION_6, ACTION_MISSION_7, ACTION_MISSION_8,
   ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput,
 } from './input.js';
 import {
   EVENT_CRASHED, EVENT_FUEL_EMPTY, EVENT_HARD_LANDING, EVENT_LANDED,
   EVENT_RING, createPlane, resetPlane, stepFlight,
 } from './physics.js';
-import { MISSIONS, landingScore, ringScore } from './missions.js';
+import { FREE_FLIGHT, MISSIONS, landingScore, ringScore } from './missions.js';
 import { createAudio } from './audio.js';
-import { drawAircraft } from './aircraft.js';
-import { drawScene, SCREEN_COMPLETE, SCREEN_CRASH, SCREEN_LAND, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+import { createRenderer, SCREEN_COMPLETE, SCREEN_CRASH, SCREEN_LAND, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 import { drawHud } from './hud.js';
 import { stageShot } from './shots.js';
-import { FONT, PALETTE, SHOT_TIME, VIEW } from './config.js';
 
 const MAX_FRAME = 0.25;
 
@@ -34,20 +37,26 @@ const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
 const seed = Number.isInteger(seedParam) ? seedParam : 1;
 
 const canvas = document.getElementById('game');
+const hudCanvas = document.getElementById('hud');
 const status = document.getElementById('status');
-const ctx = canvas.getContext('2d');
+const hudCtx = hudCanvas.getContext('2d');
 const world = createWorld(createRandom(seed));
 const plane = createPlane();
 const audio = createAudio();
+const renderer3d = createRenderer(canvas, world);
 let mission = MISSIONS[0];
 let best = 0;
+let cameraMode = 'chase';
+let liveryIndex = 0;
 
 function fitCanvas() {
   const scale = Math.min(window.innerWidth / VIEW.width, window.innerHeight / VIEW.height);
-  canvas.width = VIEW.width;
-  canvas.height = VIEW.height;
-  canvas.style.width = `${Math.floor(VIEW.width * scale)}px`;
-  canvas.style.height = `${Math.floor(VIEW.height * scale)}px`;
+  for (const c of [canvas, hudCanvas]) {
+    c.width = VIEW.width;
+    c.height = VIEW.height;
+    c.style.width = `${Math.floor(VIEW.width * scale)}px`;
+    c.style.height = `${Math.floor(VIEW.height * scale)}px`;
+  }
 }
 window.addEventListener('resize', fitCanvas);
 fitCanvas();
@@ -60,92 +69,108 @@ function announce(message) {
 let buttons = [];
 
 function drawButton(x, y, w, h, text, accent) {
-  ctx.fillStyle = accent ? 'rgba(255, 180, 0, 0.92)' : 'rgba(10, 30, 50, 0.78)';
-  ctx.strokeStyle = accent ? '#ffdf6b' : 'rgba(120, 220, 255, 0.85)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 10);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = accent ? '#1a1200' : PALETTE.hudText;
-  ctx.font = 'bold 19px ' + FONT;
-  ctx.textAlign = 'center';
-  ctx.fillText(text, x + w / 2, y + h / 2 + 7);
-  ctx.textAlign = 'left';
+  hudCtx.fillStyle = accent ? 'rgba(255, 180, 0, 0.92)' : 'rgba(10, 30, 50, 0.78)';
+  hudCtx.strokeStyle = accent ? '#ffdf6b' : 'rgba(120, 220, 255, 0.85)';
+  hudCtx.lineWidth = 2;
+  hudCtx.beginPath();
+  hudCtx.roundRect(x, y, w, h, 10);
+  hudCtx.fill();
+  hudCtx.stroke();
+  hudCtx.fillStyle = accent ? '#1a1200' : PALETTE.hudText;
+  hudCtx.font = 'bold 19px ' + FONT;
+  hudCtx.textAlign = 'center';
+  hudCtx.fillText(text, x + w / 2, y + h / 2 + 7);
+  hudCtx.textAlign = 'left';
   buttons.push({ x, y, w, h, label: text });
 }
 
 function drawTitleOverlay(time) {
-  ctx.fillStyle = 'rgba(6, 20, 38, 0.3)';
-  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 64px ' + FONT;
-  ctx.shadowColor = 'rgba(0, 40, 80, 0.9)';
-  ctx.shadowBlur = 18;
-  ctx.fillText('NUSA AIRLIFT', 640, 150);
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = PALETTE.hudAmber;
-  ctx.font = 'bold 22px ' + FONT;
-  ctx.fillText('Island courier flights over the volcano archipelago', 640, 188);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.font = '17px ' + FONT;
-  ctx.fillText('Fly the rings, mind your fuel, and put her down on runway 36.', 640, 220);
-  ctx.textAlign = 'left';
+  hudCtx.fillStyle = 'rgba(6, 20, 38, 0.3)';
+  hudCtx.fillRect(0, 0, VIEW.width, VIEW.height);
+  hudCtx.textAlign = 'center';
+  hudCtx.fillStyle = '#ffffff';
+  hudCtx.font = 'bold 64px ' + FONT;
+  hudCtx.shadowColor = 'rgba(0, 40, 80, 0.9)';
+  hudCtx.shadowBlur = 18;
+  hudCtx.fillText('NUSA AIRLIFT', 640, 132);
+  hudCtx.shadowBlur = 0;
+  hudCtx.fillStyle = PALETTE.hudAmber;
+  hudCtx.font = 'bold 22px ' + FONT;
+  hudCtx.fillText('Island courier flights over the volcano archipelago — now in real 3D', 640, 170);
+  hudCtx.fillStyle = 'rgba(255,255,255,0.92)';
+  hudCtx.font = '17px ' + FONT;
+  hudCtx.fillText('Fly the rings, mind your fuel, and put her down on runway 36.', 640, 200);
+  hudCtx.textAlign = 'left';
   buttons = [];
-  const names = ['1 · RING RUN', '2 · ISLAND HOP', '3 · STORM LANDING'];
-  names.forEach((name, i) => {
-    drawButton(640 - 300 + i * 210, 258, 190, 52, name, false);
+  // Campaign: eight missions in two rows.
+  hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
+  hudCtx.font = 'bold 15px ' + FONT;
+  hudCtx.fillText('CAMPAIGN', 40, 238);
+  MISSIONS.forEach((m, i) => {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    drawButton(40 + col * 305, 250 + row * 64, 290, 52, `${i + 1} · ${m.name.toUpperCase()}`, false);
   });
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.font = '15px ' + FONT;
-  ctx.textAlign = 'center';
-  ctx.fillText('Arrows / WASD — pitch & bank   ·   W / S — throttle   ·   Space — flaps', 640, 348);
-  ctx.fillText('Mouse drag steers too   ·   P pause   ·   R restart   ·   M sound', 640, 372);
-  ctx.fillText('Click a mission above, or press 1, 2 or 3 to fly.', 640, 402);
-  ctx.textAlign = 'left';
+  // Free flight + hangar row.
+  drawButton(40, 396, 290, 52, '9 · FREE FLIGHT', false);
+  hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
+  hudCtx.font = 'bold 15px ' + FONT;
+  hudCtx.fillText('HANGAR — PAINT', 360, 388);
+  LIVERIES.forEach((livery, i) => {
+    drawButton(360 + i * 190, 396, 175, 52, livery.name, i === liveryIndex);
+  });
+  hudCtx.fillStyle = 'rgba(255,255,255,0.9)';
+  hudCtx.font = '15px ' + FONT;
+  hudCtx.textAlign = 'center';
+  hudCtx.fillText('Arrows / WASD — pitch & bank   ·   W / S — throttle   ·   Space — flaps   ·   C — cockpit view', 640, 492);
+  hudCtx.fillText('Mouse drag steers too   ·   P pause   ·   R restart   ·   M sound', 640, 516);
+  hudCtx.fillText('Click a mission above, or press 1–9 to fly.', 640, 546);
+  hudCtx.textAlign = 'left';
   if (best > 0) {
-    ctx.fillStyle = PALETTE.hudAmber;
-    ctx.font = 'bold 17px ' + FONT;
-    ctx.textAlign = 'center';
-    ctx.fillText(`Best score this visit: ${best}`, 640, 440);
-    ctx.textAlign = 'left';
+    hudCtx.fillStyle = PALETTE.hudAmber;
+    hudCtx.font = 'bold 17px ' + FONT;
+    hudCtx.textAlign = 'center';
+    hudCtx.fillText(`Best score this visit: ${best}`, 640, 584);
+    hudCtx.textAlign = 'left';
   }
 }
 
 function drawBriefingOverlay() {
-  ctx.fillStyle = 'rgba(6, 20, 38, 0.55)';
-  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 44px ' + FONT;
-  ctx.fillText(mission.name.toUpperCase(), 640, 170);
-  ctx.fillStyle = PALETTE.hudAmber;
-  ctx.font = 'bold 21px ' + FONT;
-  ctx.fillText(mission.tagline, 640, 208);
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.font = '18px ' + FONT;
-  ctx.fillText(mission.goal, 640, 252);
-  ctx.font = '16px ' + FONT;
-  ctx.fillText(`Fuel on board: ${mission.fuel}%   ·   Rings: ${mission.rings.length}   ·   Wind: ${mission.wind === 0 ? 'calm' : mission.wind < 10 ? 'breeze' : 'gusting'}` , 640, 286);
-  ctx.fillText('Take off with full throttle, climb gently, and bank — never yank — through the rings.', 640, 330);
-  ctx.fillText('Line up on the runway centreline, slow below 120 kt, and flare for a gentle touchdown.', 640, 356);
-  ctx.textAlign = 'left';
+  hudCtx.fillStyle = 'rgba(6, 20, 38, 0.55)';
+  hudCtx.fillRect(0, 0, VIEW.width, VIEW.height);
+  hudCtx.textAlign = 'center';
+  hudCtx.fillStyle = '#ffffff';
+  hudCtx.font = 'bold 44px ' + FONT;
+  hudCtx.fillText(mission.name.toUpperCase(), 640, 170);
+  hudCtx.fillStyle = PALETTE.hudAmber;
+  hudCtx.font = 'bold 21px ' + FONT;
+  hudCtx.fillText(mission.tagline, 640, 208);
+  hudCtx.fillStyle = 'rgba(255,255,255,0.95)';
+  hudCtx.font = '18px ' + FONT;
+  hudCtx.fillText(mission.goal, 640, 252);
+  hudCtx.font = '16px ' + FONT;
+  hudCtx.fillText(`Fuel on board: ${mission.fuel}%   ·   Rings: ${mission.rings.length}   ·   Wind: ${mission.wind === 0 ? 'calm' : mission.wind < 10 ? 'breeze' : 'gusting'}`, 640, 286);
+  if (mission.dusk) hudCtx.fillText('Dusk flight — follow the runway lights and your instruments.', 640, 316);
+  else if (mission.timeLimit) hudCtx.fillText(`Beat the clock: ${mission.timeLimit} seconds for rings and landing.`, 640, 316);
+  else if (mission.pickup) hudCtx.fillText('Land on the Pulau Pasir beach strip first, then fly home to runway 36.', 640, 316);
+  else hudCtx.fillText('Take off with full throttle, climb gently, and bank — never yank — through the rings.', 640, 316);
+  hudCtx.fillText('Line up on the runway centreline, slow below 120 kt, and flare for a gentle touchdown.', 640, 346);
+  hudCtx.textAlign = 'left';
   buttons = [];
   drawButton(490, 400, 300, 56, 'TAKE OFF  →', true);
 }
 
 function drawEndOverlay(title, lines, accent) {
-  ctx.fillStyle = 'rgba(6, 20, 38, 0.55)';
-  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-  ctx.textAlign = 'center';
-  ctx.fillStyle = accent || '#ffffff';
-  ctx.font = 'bold 46px ' + FONT;
-  ctx.fillText(title, 640, 210);
-  ctx.fillStyle = 'rgba(255,255,255,0.95)';
-  ctx.font = '19px ' + FONT;
-  lines.forEach((line, i) => ctx.fillText(line, 640, 258 + i * 32));
-  ctx.textAlign = 'left';
+  hudCtx.fillStyle = 'rgba(6, 20, 38, 0.55)';
+  hudCtx.fillRect(0, 0, VIEW.width, VIEW.height);
+  hudCtx.textAlign = 'center';
+  hudCtx.fillStyle = accent || '#ffffff';
+  hudCtx.font = 'bold 46px ' + FONT;
+  hudCtx.fillText(title, 640, 210);
+  hudCtx.fillStyle = 'rgba(255,255,255,0.95)';
+  hudCtx.font = '19px ' + FONT;
+  lines.forEach((line, i) => hudCtx.fillText(line, 640, 258 + i * 32));
+  hudCtx.textAlign = 'left';
   buttons = [];
   drawButton(430, 420, 180, 54, 'FLY AGAIN (R)', true);
   drawButton(640, 420, 210, 54, 'CHANGE MISSION', false);
@@ -153,26 +178,30 @@ function drawEndOverlay(title, lines, accent) {
 
 function runShot(name) {
   world.layRings(mission.rings);
+  renderer3d.setMission(mission);
   const scene = stageShot(name, world, plane, mission);
   // Paint twice, synchronously: a headless screenshot must not depend on the
   // compositor scheduling a frame, so the shot is settled before we say so.
   function paint() {
     buttons = [];
-    drawScene(ctx, plane, world, SHOT_TIME);
-    drawAircraft(ctx, 640, 545, plane.roll, 0.92, SHOT_TIME, plane.throttle, plane.stalled);
-    drawHud(ctx, plane, world, mission, scene.score, scene.elapsed, scene.best, false);
+    hudCtx.clearRect(0, 0, VIEW.width, VIEW.height);
+    renderer3d.renderFrame(plane, world, mission, SHOT_TIME, 'chase', 1);
+    // No flight HUD on the title shot: the menu carries the information.
+    if (scene.screen !== SCREEN_TITLE) {
+      drawHud(hudCtx, plane, world, mission, scene.score, scene.elapsed, scene.best, false);
+    }
     if (scene.screen === SCREEN_TITLE) drawTitleOverlay(SHOT_TIME);
     if (scene.screen === SCREEN_LAND) {
-      ctx.fillStyle = 'rgba(6, 20, 38, 0.35)';
-      ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 40px ' + FONT;
-      ctx.fillText('FINAL APPROACH — RUNWAY 36', 640, 150);
-      ctx.fillStyle = PALETTE.hudAmber;
-      ctx.font = 'bold 19px ' + FONT;
-      ctx.fillText('All rings flown · flaps down · 100 kt · on the centreline', 640, 184);
-      ctx.textAlign = 'left';
+      hudCtx.fillStyle = 'rgba(6, 20, 38, 0.35)';
+      hudCtx.fillRect(0, 0, VIEW.width, VIEW.height);
+      hudCtx.textAlign = 'center';
+      hudCtx.fillStyle = '#ffffff';
+      hudCtx.font = 'bold 40px ' + FONT;
+      hudCtx.fillText('FINAL APPROACH — RUNWAY 36', 640, 150);
+      hudCtx.fillStyle = PALETTE.hudAmber;
+      hudCtx.font = 'bold 19px ' + FONT;
+      hudCtx.fillText('All rings flown · flaps down · 100 kt · on the centreline', 640, 184);
+      hudCtx.textAlign = 'left';
     }
   }
   paint();
@@ -192,8 +221,11 @@ function runGame() {
   let endTitle = '';
   let endAccent = '#ffffff';
   let windPhase = 0;
+  let missionPhase = 1; // Rescue Pickup: 1 = fly to the beach, 2 = fly home.
+  let pickupBannerUntil = 0;
 
   world.layRings(mission.rings);
+  renderer3d.setMission(mission);
   resetPlane(plane, mission.fuel);
   // The title screen flies a gentle cruise over the islands behind the menu.
   plane.y = 300;
@@ -205,8 +237,19 @@ function runGame() {
 
   function startMission(nextMission) {
     mission = nextMission;
+    missionPhase = 1;
+    pickupBannerUntil = 0;
     world.layRings(mission.rings);
+    renderer3d.setMission(mission);
     resetPlane(plane, mission.fuel);
+    if (mission.startAirborne) {
+      plane.x = mission.startAirborne.x;
+      plane.y = mission.startAirborne.y;
+      plane.z = mission.startAirborne.z;
+      plane.speed = mission.startAirborne.speed;
+      plane.throttle = 0.6;
+      plane.airborne = true;
+    }
     score = 0;
     elapsed = 0;
     accumulator = 0;
@@ -218,7 +261,10 @@ function runGame() {
 
   function showTitle() {
     screen = SCREEN_TITLE;
+    mission = MISSIONS[0];
+    missionPhase = 1;
     world.layRings(MISSIONS[0].rings);
+    renderer3d.setMission(MISSIONS[0]);
     resetPlane(plane, MISSIONS[0].fuel);
     plane.y = 300;
     plane.z = 6800;
@@ -244,6 +290,19 @@ function runGame() {
     return { x: gust * 0.514, z: -gust * 0.2 };
   }
 
+  function missionByKey(actions) {
+    if (actions & ACTION_MISSION_1) return MISSIONS[0];
+    if (actions & ACTION_MISSION_2) return MISSIONS[1];
+    if (actions & ACTION_MISSION_3) return MISSIONS[2];
+    if (actions & ACTION_MISSION_4) return MISSIONS[3];
+    if (actions & ACTION_MISSION_5) return MISSIONS[4];
+    if (actions & ACTION_MISSION_6) return MISSIONS[5];
+    if (actions & ACTION_MISSION_7) return MISSIONS[6];
+    if (actions & ACTION_MISSION_8) return MISSIONS[7];
+    if (actions & ACTION_FREE_FLIGHT) return FREE_FLIGHT;
+    return null;
+  }
+
   function handleActions() {
     const actions = input.takeActions();
     const click = input.takeClick();
@@ -251,15 +310,26 @@ function runGame() {
       const muted = audio.toggleMute();
       announce(muted ? 'Sound off.' : 'Sound on.');
     }
+    if (actions & ACTION_COCKPIT) {
+      cameraMode = cameraMode === 'chase' ? 'cockpit' : 'chase';
+      announce(cameraMode === 'cockpit' ? 'Cockpit view.' : 'Chase view.');
+    }
     if (click) {
       audio.ensure();
       for (const b of buttons) {
         if (click.x >= b.x && click.x <= b.x + b.w && click.y >= b.y && click.y <= b.y + b.h) {
           audio.click();
           if (screen === SCREEN_TITLE) {
-            if (b.label.includes('RING RUN')) startMission(MISSIONS[0]);
-            else if (b.label.includes('ISLAND HOP')) startMission(MISSIONS[1]);
-            else if (b.label.includes('STORM')) startMission(MISSIONS[2]);
+            const picked = MISSIONS.find((m) => b.label.includes(m.name.toUpperCase()))
+              || (b.label.includes('FREE FLIGHT') ? FREE_FLIGHT : null);
+            if (picked) { startMission(picked); return; }
+            const livery = LIVERIES.find((l) => b.label.includes(l.name));
+            if (livery) {
+              liveryIndex = LIVERIES.indexOf(livery);
+              renderer3d.setLivery(livery);
+              announce(`Paint: ${livery.name}.`);
+              return;
+            }
           } else if (screen === 'briefing') startMission(mission);
           else if (screen === SCREEN_COMPLETE || screen === SCREEN_CRASH) {
             if (b.label.includes('FLY AGAIN')) startMission(mission);
@@ -270,9 +340,8 @@ function runGame() {
       }
     }
     if (screen === SCREEN_TITLE) {
-      if (actions & ACTION_MISSION_1) startMission(MISSIONS[0]);
-      else if (actions & ACTION_MISSION_2) startMission(MISSIONS[1]);
-      else if (actions & ACTION_MISSION_3) startMission(MISSIONS[2]);
+      const picked = missionByKey(actions);
+      if (picked) startMission(picked);
       else if (actions & ACTION_CONFIRM) {
         screen = 'briefing';
         audio.ensure();
@@ -315,39 +384,65 @@ function runGame() {
     if (screen !== SCREEN_PLAY) return;
     elapsed += STEP;
     time += STEP;
+    // Turbulence in heavy weather: the gusts shove the controls around.
+    let jitterRoll = 0;
+    let jitterPitch = 0;
+    if (mission.wind >= 10) {
+      const k = 0.14 * (mission.wind / 18);
+      jitterRoll = (Math.sin(time * 7.3) + Math.sin(time * 13.1) * 0.6) * k;
+      jitterPitch = Math.sin(time * 9.7) * k * 0.5;
+    }
     const steer = {
-      roll: input.roll(),
-      pitch: input.pitch(),
+      roll: input.roll() + jitterRoll,
+      pitch: input.pitch() + jitterPitch,
       throttle: input.throttle(),
     };
     const events = stepFlight(plane, steer, STEP, world, windNow());
     audio.update(plane.throttle, plane.speed, plane.airborne);
     if (events & EVENT_RING) {
+      const passed = world.state.rings[world.state.ringIndex - 1];
+      if (passed) renderer3d.ringBurst(passed);
       const gained = ringScore(mission, plane.speed);
       score += gained;
       audio.ringChime();
       announce(`Ring ${world.state.ringIndex} of ${world.state.ringsTotal}. Plus ${gained}.`);
     }
     if (events & EVENT_FUEL_EMPTY) announce('Fuel empty. Gliding — find the runway.');
-    if (events & EVENT_LANDED) {
-      const gained = landingScore(mission, -plane.verticalSpeed, false);
+    if (mission.timeLimit && elapsed > mission.timeLimit) {
+      finishFlight('OUT OF TIME', [
+        `${mission.name} — the clock beat you to the runway.`,
+        `Rings flown ${world.state.ringIndex} of ${world.state.ringsTotal}   ·   Score ${score}`,
+        'Press R to fly again.',
+      ], PALETTE.hudRed);
+      return;
+    }
+    if (events & EVENT_LANDED || events & EVENT_HARD_LANDING) {
+      const hard = !!(events & EVENT_HARD_LANDING);
+      // Rescue Pickup, phase 1: a beach touchdown is a pickup, not the end.
+      if (mission.pickup && missionPhase === 1) {
+        if (plane.landedStrip === 'beach') {
+          missionPhase = 2;
+          score += mission.pickupPoints;
+          pickupBannerUntil = elapsed + 5;
+          audio.ringChime();
+          announce(`Pickup complete — plus ${mission.pickupPoints}. Fly home to runway 36.`);
+          return;
+        }
+        finishFlight('MISSION INCOMPLETE', [
+          `${mission.name} — you landed on runway 36, but the hiker is still waiting on Pulau Pasir.`,
+          `Rings flown ${world.state.ringIndex} of ${world.state.ringsTotal}   ·   Score ${score}`,
+          'Press R to fly again.',
+        ], PALETTE.hudAmber);
+        return;
+      }
+      const gained = landingScore(mission, -plane.verticalSpeed, hard);
       score += gained;
-      audio.touchdown(false);
+      audio.touchdown(hard);
       finishFlight('MISSION COMPLETE', [
-        `${mission.name} — all rings flown, wheels down on runway 36.`,
+        `${mission.name} — ${mission.pickup && missionPhase === 2 ? 'passenger safe, wheels down on runway 36.' : 'all rings flown, wheels down on runway 36.'}`,
         `Landing bonus +${gained}   ·   Time ${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, '0')}`,
         `Score ${score}   ·   Best this visit ${Math.max(best, score)}`,
-      ], PALETTE.hudGreen);
-    }
-    if (events & EVENT_HARD_LANDING) {
-      const gained = landingScore(mission, -plane.verticalSpeed, true);
-      score += gained;
-      audio.touchdown(true);
-      finishFlight('MISSION COMPLETE', [
-        `${mission.name} — down on the runway, but hard. The mechanics will want a word.`,
-        `Hard-landing bonus +${gained}   ·   Time ${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, '0')}`,
-        `Score ${score}   ·   Best this visit ${Math.max(best, score)}`,
-      ], PALETTE.hudAmber);
+      ], hard ? PALETTE.hudAmber : PALETTE.hudGreen);
     }
     if (events & EVENT_CRASHED) {
       audio.crash();
@@ -362,7 +457,8 @@ function runGame() {
 
   function frame(now) {
     requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
+    const frameDt = Math.min((now - last) / 1000, MAX_FRAME);
+    accumulator += frameDt;
     last = now;
     handleActions();
     if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
@@ -376,33 +472,50 @@ function runGame() {
     }
     time += 1 / 120;
     buttons = [];
-    drawScene(ctx, plane, world, time);
-    drawAircraft(ctx, 640, 545, plane.roll, 0.92, time, plane.throttle, plane.stalled);
+    hudCtx.clearRect(0, 0, VIEW.width, VIEW.height);
+    renderer3d.renderFrame(plane, world, mission, time, cameraMode, frameDt);
+    // The HUD objective changes during the rescue's second phase.
+    let objective = null;
+    if (mission.pickup && missionPhase === 1 && world.state.ringIndex === world.state.ringsTotal) {
+      objective = 'Land on the Pulau Pasir beach strip — 1.2 km east';
+    } else if (mission.pickup && missionPhase === 2) {
+      objective = `Passenger aboard — land on runway 36, ${Math.max(0, Math.round(RUNWAY.zStart - plane.z))} m ahead`;
+    }
     if (screen === SCREEN_PLAY || screen === SCREEN_PAUSED) {
-      drawHud(ctx, plane, world, mission, score, elapsed, best, audio.isMuted());
+      drawHud(hudCtx, plane, world, mission, score, elapsed, best, audio.isMuted(), objective, cameraMode === 'cockpit');
     }
     if (screen === SCREEN_TITLE) {
-      drawHud(ctx, plane, world, mission, 0, 0, best, audio.isMuted());
+      // No flight HUD on the title screen: the menu buttons carry the
+      // information, and the HUD panels would overlap them.
       drawTitleOverlay(time);
     }
     if (screen === 'briefing') {
-      drawHud(ctx, plane, world, mission, 0, 0, best, audio.isMuted());
       drawBriefingOverlay();
     }
     if (screen === SCREEN_PAUSED) {
-      ctx.fillStyle = 'rgba(6, 20, 38, 0.55)';
-      ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 44px ' + FONT;
-      ctx.fillText('PAUSED', 640, 300);
-      ctx.font = '18px ' + FONT;
-      ctx.fillText('P or Space to keep flying   ·   R to restart the mission', 640, 340);
-      ctx.textAlign = 'left';
+      hudCtx.fillStyle = 'rgba(6, 20, 38, 0.55)';
+      hudCtx.fillRect(0, 0, VIEW.width, VIEW.height);
+      hudCtx.textAlign = 'center';
+      hudCtx.fillStyle = '#ffffff';
+      hudCtx.font = 'bold 44px ' + FONT;
+      hudCtx.fillText('PAUSED', 640, 300);
+      hudCtx.font = '18px ' + FONT;
+      hudCtx.fillText('P or Space to keep flying   ·   R to restart the mission   ·   C cockpit view', 640, 340);
+      hudCtx.textAlign = 'left';
     }
     if (screen === SCREEN_COMPLETE || screen === SCREEN_CRASH) {
-      drawHud(ctx, plane, world, mission, score, elapsed, best, audio.isMuted());
+      drawHud(hudCtx, plane, world, mission, score, elapsed, best, audio.isMuted(), null, cameraMode === 'cockpit');
       drawEndOverlay(endTitle, endLines, endAccent);
+    }
+    if (pickupBannerUntil > 0 && elapsed < pickupBannerUntil && screen === SCREEN_PLAY) {
+      hudCtx.fillStyle = PALETTE.hudGreen;
+      hudCtx.font = 'bold 22px ' + FONT;
+      hudCtx.textAlign = 'center';
+      hudCtx.shadowColor = PALETTE.hudGreen;
+      hudCtx.shadowBlur = 12;
+      hudCtx.fillText('PICKUP COMPLETE — FLY HOME TO RUNWAY 36', 640, 160);
+      hudCtx.shadowBlur = 0;
+      hudCtx.textAlign = 'left';
     }
   }
 
@@ -420,6 +533,15 @@ function runGame() {
       announce('Paused.');
     }
   });
+
+  // Debug handle for automated smoke tests (not part of the game UI).
+  window.__nusa = {
+    plane, world,
+    mission: () => mission,
+    screen: () => screen,
+    score: () => score,
+    cameraMode: () => cameraMode,
+  };
 
   announce('Nusa Airlift. Choose a mission to fly.');
   requestAnimationFrame(frame);
