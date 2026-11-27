@@ -17,6 +17,7 @@ import {
   ACTION_COCKPIT, ACTION_CONFIRM, ACTION_FREE_FLIGHT,
   ACTION_MISSION_1, ACTION_MISSION_2, ACTION_MISSION_3, ACTION_MISSION_4,
   ACTION_MISSION_5, ACTION_MISSION_6, ACTION_MISSION_7, ACTION_MISSION_8,
+  ACTION_MISSION_9, ACTION_MISSION_10,
   ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput,
 } from './input.js';
 import {
@@ -40,7 +41,7 @@ const canvas = document.getElementById('game');
 const hudCanvas = document.getElementById('hud');
 const status = document.getElementById('status');
 const hudCtx = hudCanvas.getContext('2d');
-const world = createWorld(createRandom(seed));
+const world = createWorld(createRandom(seed), seed);
 const plane = createPlane();
 const audio = createAudio();
 const renderer3d = createRenderer(canvas, world);
@@ -77,9 +78,9 @@ function drawButton(x, y, w, h, text, accent) {
   hudCtx.fill();
   hudCtx.stroke();
   hudCtx.fillStyle = accent ? '#1a1200' : PALETTE.hudText;
-  hudCtx.font = 'bold 19px ' + FONT;
+  hudCtx.font = 'bold 17px ' + FONT;
   hudCtx.textAlign = 'center';
-  hudCtx.fillText(text, x + w / 2, y + h / 2 + 7);
+  hudCtx.fillText(text, x + w / 2, y + h / 2 + 6);
   hudCtx.textAlign = 'left';
   buttons.push({ x, y, w, h, label: text });
 }
@@ -102,17 +103,17 @@ function drawTitleOverlay(time) {
   hudCtx.fillText('Fly the rings, mind your fuel, and put her down on runway 36.', 640, 200);
   hudCtx.textAlign = 'left';
   buttons = [];
-  // Campaign: eight missions in two rows.
+  // Campaign: ten missions in two rows of five.
   hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
   hudCtx.font = 'bold 15px ' + FONT;
   hudCtx.fillText('CAMPAIGN', 40, 238);
   MISSIONS.forEach((m, i) => {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
-    drawButton(40 + col * 305, 250 + row * 64, 290, 52, `${i + 1} · ${m.name.toUpperCase()}`, false);
+    const col = i % 5;
+    const row = Math.floor(i / 5);
+    drawButton(40 + col * 240, 250 + row * 64, 228, 52, `${i + 1} · ${m.name.toUpperCase()}`, false);
   });
   // Free flight + hangar row.
-  drawButton(40, 396, 290, 52, '9 · FREE FLIGHT', false);
+  drawButton(40, 396, 290, 52, 'F · FREE FLIGHT', false);
   hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
   hudCtx.font = 'bold 15px ' + FONT;
   hudCtx.fillText('HANGAR — PAINT', 360, 388);
@@ -124,7 +125,7 @@ function drawTitleOverlay(time) {
   hudCtx.textAlign = 'center';
   hudCtx.fillText('Arrows / WASD — pitch & bank   ·   W / S — throttle   ·   Space — flaps   ·   C — cockpit view', 640, 492);
   hudCtx.fillText('Mouse drag steers too   ·   P pause   ·   R restart   ·   M sound', 640, 516);
-  hudCtx.fillText('Click a mission above, or press 1–9 to fly.', 640, 546);
+  hudCtx.fillText('Click a mission above, or press 1–0 to fly, F for Free Flight.', 640, 546);
   hudCtx.textAlign = 'left';
   if (best > 0) {
     hudCtx.fillStyle = PALETTE.hudAmber;
@@ -153,6 +154,7 @@ function drawBriefingOverlay() {
   if (mission.dusk) hudCtx.fillText('Dusk flight — follow the runway lights and your instruments.', 640, 316);
   else if (mission.timeLimit) hudCtx.fillText(`Beat the clock: ${mission.timeLimit} seconds for rings and landing.`, 640, 316);
   else if (mission.pickup) hudCtx.fillText('Land on the Pulau Pasir beach strip first, then fly home to runway 36.', 640, 316);
+  else if (mission.rain) hudCtx.fillText('Rain and lightning — keep her steady and watch the fuel.', 640, 316);
   else hudCtx.fillText('Take off with full throttle, climb gently, and bank — never yank — through the rings.', 640, 316);
   hudCtx.fillText('Line up on the runway centreline, slow below 120 kt, and flare for a gentle touchdown.', 640, 346);
   hudCtx.textAlign = 'left';
@@ -185,10 +187,10 @@ function runShot(name) {
   function paint() {
     buttons = [];
     hudCtx.clearRect(0, 0, VIEW.width, VIEW.height);
-    renderer3d.renderFrame(plane, world, mission, SHOT_TIME, 'chase', 1);
+    renderer3d.renderFrame(plane, world, mission, SHOT_TIME, scene.cameraMode, 1);
     // No flight HUD on the title shot: the menu carries the information.
     if (scene.screen !== SCREEN_TITLE) {
-      drawHud(hudCtx, plane, world, mission, scene.score, scene.elapsed, scene.best, false);
+      drawHud(hudCtx, plane, world, mission, scene.score, scene.elapsed, scene.best, false, null, scene.cameraMode === 'cockpit');
     }
     if (scene.screen === SCREEN_TITLE) drawTitleOverlay(SHOT_TIME);
     if (scene.screen === SCREEN_LAND) {
@@ -299,6 +301,8 @@ function runGame() {
     if (actions & ACTION_MISSION_6) return MISSIONS[5];
     if (actions & ACTION_MISSION_7) return MISSIONS[6];
     if (actions & ACTION_MISSION_8) return MISSIONS[7];
+    if (actions & ACTION_MISSION_9) return MISSIONS[8];
+    if (actions & ACTION_MISSION_10) return MISSIONS[9];
     if (actions & ACTION_FREE_FLIGHT) return FREE_FLIGHT;
     return null;
   }

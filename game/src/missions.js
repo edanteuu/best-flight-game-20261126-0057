@@ -1,4 +1,4 @@
-// The eight sorties of Nusa Airlift, plus Free Flight. Same archipelago, same
+// The ten sorties of Nusa Airlift, plus Free Flight. Same archipelago, same
 // plane — different decisions. Each mission names its goal, its rings, its fuel
 // load and its weather, and scores the flight: rings are worth points, a smooth
 // landing is worth more, and the clock is always running.
@@ -6,6 +6,7 @@
 // Special fields a mission may carry:
 //   dusk — fly at sunset: low sun, lit runway, navigation lights on.
 //   fog — how thick the haze is (0 = clear day, higher = murkier).
+//   rain — driving rain and lightning (the squall missions).
 //   timeLimit — seconds to finish all rings and land, or the sortie fails.
 //   startAirborne — { x, y, z, speed } pose the plane starts in, already flying.
 //   pickup — two-phase rescue: land on the beach strip first, then fly home
@@ -55,9 +56,10 @@ export const MISSIONS = [
     id: 3,
     name: 'Storm Landing',
     tagline: 'A squall is rolling in off the volcano. Three rings, then down — fast.',
-    goal: 'Three rings in gusting wind, then land before the storm closes in.',
+    goal: 'Three rings in gusting wind and rain, then land before the storm closes in.',
     fuel: 85,
     wind: 14,
+    rain: true,
     ringPoints: 200,
     landingPoints: 700,
     timeBonus: true,
@@ -142,10 +144,11 @@ export const MISSIONS = [
     id: 8,
     name: 'Storm Crossing',
     tagline: 'Fly straight through the squall line. Low cloud, hard gusts, no shortcuts.',
-    goal: 'Four rings through heavy weather, then land in the murk.',
+    goal: 'Four rings through heavy weather and rain, then land in the murk.',
     fuel: 95,
     wind: 18,
     fog: 0.0011,
+    rain: true,
     ringPoints: 240,
     landingPoints: 750,
     rings: [
@@ -153,6 +156,41 @@ export const MISSIONS = [
       { x: 700, y: 230, z: 4600, r: 46 },
       { x: -500, y: 200, z: 6600, r: 46 },
       { x: 0, y: 160, z: 8800, r: 46 },
+    ],
+  },
+  {
+    id: 9,
+    name: 'Volcano Survey',
+    tagline: 'Circle the smoking crater at 400 metres and photograph every vent.',
+    goal: 'Five rings around the volcano crater, high over the lava glow, then land.',
+    fuel: 90,
+    wind: 8,
+    ringPoints: 230,
+    landingPoints: 700,
+    rings: [
+      { x: 1150, y: 430, z: 10250, r: 46 },
+      { x: 350, y: 460, z: 11400, r: 46 },
+      { x: -1050, y: 440, z: 10750, r: 46 },
+      { x: -700, y: 410, z: 9400, r: 46 },
+      { x: 700, y: 420, z: 9300, r: 46 },
+    ],
+  },
+  {
+    id: 10,
+    name: 'Golden Hour Cargo',
+    tagline: 'Last light over the sea. One short tank, five drops, home before dark.',
+    goal: 'Five rings at dusk on 75% fuel, then a golden-hour landing.',
+    fuel: 75,
+    wind: 5,
+    dusk: true,
+    ringPoints: 230,
+    landingPoints: 800,
+    rings: [
+      { x: -900, y: 190, z: 1600, r: 44 },
+      { x: 1100, y: 210, z: 3400, r: 44 },
+      { x: -1400, y: 180, z: 5200, r: 44 },
+      { x: 900, y: 200, z: 7000, r: 44 },
+      { x: 0, y: 150, z: 8900, r: 44 },
     ],
   },
 ];
@@ -174,7 +212,7 @@ export const FREE_FLIGHT = {
 export const FINAL_FIX = { x: RUNWAY.x, y: 110, z: RUNWAY.zStart - 1400 };
 
 /** A mission's par time in seconds, for the Storm Landing time bonus. */
-export const PAR_TIME = { 1: 300, 2: 420, 3: 240, 4: 360, 5: 420, 6: 360, 7: 180, 8: 360 };
+export const PAR_TIME = { 1: 300, 2: 420, 3: 240, 4: 360, 5: 420, 6: 360, 7: 180, 8: 360, 9: 420, 10: 360 };
 
 /** Points for a ring, with a small speed bonus for flying it clean and fast. */
 export function ringScore(mission, speedKnots) {

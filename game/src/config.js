@@ -1,4 +1,4 @@
-// Nusa Airlift — every tuning number and colour in one place.
+// Nusa Airlift v3 — every tuning number and colour in one place.
 // The playfield is a fixed 1280x720 logical canvas; the renderer scales it to the
 // window, so no rule below depends on the screen size. Distances are metres,
 // altitudes are metres, speeds are knots, headings are degrees (0 = north).
@@ -18,6 +18,8 @@ export const PLANE = {
   maxPitch: 22, // degrees up / down
   fuelBurn: 0.55, // percent of tank per second at full throttle
   glideSink: 4.5, // m/s sink with no power
+  groundEffect: 0.35, // fraction of sink removed by ground effect below 12 m
+  groundEffectHeight: 12, // metres above ground where ground effect bites
 };
 
 export const RUNWAY = {
@@ -43,6 +45,7 @@ export const LIVERIES = [
   { id: 'nusa', name: 'NUSA RED', body: '#f4f6f8', accent: '#d43d2a', trim: '#1e5fa8' },
   { id: 'ocean', name: 'OCEAN BLUE', body: '#eef4f8', accent: '#1e5fa8', trim: '#d43d2a' },
   { id: 'sunset', name: 'SUNSET GOLD', body: '#fdf6e3', accent: '#e8a100', trim: '#7a3b12' },
+  { id: 'jungle', name: 'JUNGLE GREEN', body: '#eef2e4', accent: '#2e7d3a', trim: '#d43d2a' },
 ];
 
 export const COURSE_LENGTH = 11200;
@@ -72,7 +75,23 @@ export const PALETTE = {
   planeRed: '#d43d2a',
   planeWhite: '#f4f6f8',
   planeBlue: '#1e5fa8',
+  // v3 — vegetation, lava, airfield and weather.
+  treeTrunk: '#6b4a2f',
+  treeLeaf: '#2e7d3a',
+  treeLeaf2: '#4d9e4f',
+  palmTrunk: '#7a5c38',
+  palmLeaf: '#3f9e4d',
+  lava: '#ff6a1a',
+  lavaBright: '#ffd23d',
+  towerWhite: '#e8e8e4',
+  towerGlass: '#16324a',
+  hangar: '#c8cdd2',
+  rain: '#bcd8ff',
+  beacon: '#ffb400',
 };
+
+/** The minimap's frame on the HUD canvas (top-right, under the score panel). */
+export const MINIMAP = { x: 1046, y: 120, w: 218, h: 148 };
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 export const FONT_MONO = '"SF Mono", "Cascadia Mono", Consolas, monospace';

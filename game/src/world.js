@@ -2,9 +2,11 @@
 // the runway strip, the glowing target rings and the clouds are all laid out here
 // from a seeded random, so the same seed always builds the same islands — the
 // screenshots and every mission fly the same map. No drawing lives here, only data.
+// v3: the hills carry two octaves of seeded value noise, so the terrain reads as
+// grown ground with rolling detail instead of smooth cones.
 
 import { BEACH, COURSE_LENGTH, RUNWAY } from './config.js';
-import { range } from './random.js';
+import { fbmNoise, range } from './random.js';
 
 /** A landmass: a sand beach ring, green interior and, on the big one, a volcano peak. */
 export function makeIsland(x, z, radius, peak, name) {
@@ -21,7 +23,7 @@ export function makeCloud(x, y, z, size) {
   return { x, y, z, size };
 }
 
-export function createWorld(random) {
+export function createWorld(random, seed = 1) {
   // The main island sits astride the course with the runway on its flat north shore;
   // the volcano rises behind it so the approach is unmistakable from miles out.
   const islands = [
@@ -61,6 +63,7 @@ export function createWorld(random) {
     rings: [],
     ringIndex: 0,
     ringsTotal: 0,
+    seed,
   };
 
   /** Lay the mission's rings along the course. Each ring: where it hangs and how wide. */
@@ -110,20 +113,28 @@ export function createWorld(random) {
     return terrainHeight(x, z);
   }
 
-  /** Raw terrain height: island hills and the volcano peak, else sea level 0. */
+  /** Raw terrain height: island hills and the volcano peak, else sea level 0.
+   * v3: two octaves of seeded noise ride on each island's falloff, so the hills
+   * roll instead of rising as perfect cones — the noise fades to nothing at the
+   * shoreline, so the sea stays flat and the strips stay flat. */
   function terrainHeight(x, z) {
     let height = 0;
+    let falloff = 0;
     for (const island of islands) {
       const dx = x - island.x;
       const dz = z - island.z;
       const d = Math.sqrt(dx * dx + dz * dz);
       if (d < island.radius) {
-        const falloff = 1 - d / island.radius;
-        const hill = 26 * falloff + (island.peak > 0 ? island.peak * falloff * falloff : 0);
-        if (hill > height) height = hill;
+        const f = 1 - d / island.radius;
+        const hill = 26 * f + (island.peak > 0 ? island.peak * f * f : 0);
+        if (hill > height) {
+          height = hill;
+          falloff = f;
+        }
       }
     }
-    return height;
+    if (height > 0) height += fbmNoise(seed, x, z) * 9 * falloff;
+    return Math.max(0, height);
   }
 
   /** True when (x, z) is over dry land rather than open sea. */
@@ -151,5 +162,5 @@ export function createWorld(random) {
     return null;
   }
 
-  return { state, layRings, nextRing, groundHeight, isLand, overRunway, landingStrip };
+  return { state, layRings, nextRing, groundHeight, terrainHeight, isLand, overRunway, landingStrip };
 }

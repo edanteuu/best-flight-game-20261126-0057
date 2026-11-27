@@ -1,8 +1,11 @@
 // The instruments: every number the pilot needs, lit like a real panel — glowing
 // digits on dark glass, a compass tape, an artificial horizon, throttle and fuel
-// gauges, and the mission readout. The HUD is drawn over the chase view every frame.
+// gauges, a live minimap of the archipelago, and the mission readout. The HUD is
+// drawn over the chase view every frame. v3 adds the minimap: islands, strips,
+// rings and the plane's own heading, so the pilot always knows where the next
+// ring hangs and how far the runway is.
 
-import { FONT, FONT_MONO, PALETTE, RUNWAY } from './config.js';
+import { FONT, FONT_MONO, MINIMAP, PALETTE, RUNWAY } from './config.js';
 
 function panel(ctx, x, y, w, h) {
   ctx.fillStyle = PALETTE.hudPanel;
@@ -144,6 +147,82 @@ function gauge(ctx, x, y, w, h, fraction, color, labelText) {
 }
 
 /**
+ * World (x, z) metres to minimap canvas pixels: one uniform scale over the whole
+ * flyable map (x -7000..7000, z -1500..12500), centred in the MINIMAP frame.
+ * Pure, so the layout is checkable without a canvas.
+ */
+export function toMap(x, z) {
+  const span = 14000;
+  const s = Math.min(MINIMAP.w, MINIMAP.h) / span;
+  const ox = MINIMAP.x + (MINIMAP.w - span * s) / 2;
+  const oy = MINIMAP.y + (MINIMAP.h - span * s) / 2;
+  return { x: ox + (x + 7000) * s, y: oy + (z + 1500) * s, s };
+}
+
+/**
+ * The minimap: the sea, the islands as green blobs, the runway and beach strips
+ * as white bars, the rings (green flown, amber next, grey to come) and the plane
+ * as a white triangle turned to its heading. Drawn inside the MINIMAP frame.
+ */
+export function drawMinimap(ctx, plane, world) {
+  const { x, y, w, h } = MINIMAP;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(10, 50, 80, 0.85)';
+  ctx.fillRect(x, y, w, h);
+  // Islands.
+  for (const island of world.state.islands) {
+    const c = toMap(island.x, island.z);
+    ctx.fillStyle = island.peak > 0 ? '#7a5a44' : '#3f8f4d';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, island.radius * c.s, island.radius * c.s * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Runway 36 and the beach strip.
+  const rw = toMap(RUNWAY.x, RUNWAY.zStart);
+  ctx.fillStyle = '#f5f5f0';
+  ctx.fillRect(rw.x - 1.5, rw.y, 3, RUNWAY.length * rw.s);
+  const beach = toMap(3600, 2200);
+  ctx.fillStyle = '#e8d29a';
+  ctx.fillRect(beach.x - 1.5, beach.y, 3, 400 * beach.s);
+  // Rings: flown green, next amber, the rest faint.
+  world.state.rings.forEach((ring, i) => {
+    const p = toMap(ring.x, ring.z);
+    ctx.fillStyle = ring.passed ? PALETTE.hudGreen : (i === world.state.ringIndex ? PALETTE.hudAmber : 'rgba(255,255,255,0.4)');
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, i === world.state.ringIndex ? 4.5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // The plane: a triangle pointing along its heading (heading 0 = north = up).
+  const p = toMap(plane.x, plane.z);
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(plane.heading);
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#0a2030';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(5, 6);
+  ctx.lineTo(0, 3);
+  ctx.lineTo(-5, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+  // Frame + label.
+  ctx.strokeStyle = PALETTE.hudEdge;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.stroke();
+  label(ctx, 'MAP — NUSA AIRLIFT', x + 8, y + 14);
+}
+
+/**
  * Draw the full HUD. `plane` is the aircraft, `world` the archipelago state,
  * `mission` the active sortie, `score`, `elapsed` seconds and `best` score.
  * `objectiveOverride` replaces the next-objective line when given.
@@ -187,6 +266,9 @@ export function drawHud(ctx, plane, world, mission, score, elapsed, best, muted,
   ctx.textAlign = 'right';
   ctx.fillText(`BEST ${best}`, 1252, 104);
   ctx.textAlign = 'left';
+
+  // Minimap under the score panel.
+  drawMinimap(ctx, plane, world);
 
   // Rings progress, centred under the compass.
   const done = world.state.ringIndex;

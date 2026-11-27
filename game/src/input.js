@@ -3,6 +3,7 @@
 // once by the loop, so a press between two frames is never lost or counted twice.
 // Mouse drag steers as an alternative to the keys: drag left/right to bank, drag
 // up/down to pitch. Clicks land on menu buttons (the loop asks clickPosition()).
+// v3: ten missions — keys 1–9 and 0 pick them, F is Free Flight, C the cockpit.
 
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
@@ -16,8 +17,10 @@ export const ACTION_MISSION_5 = 256;
 export const ACTION_MISSION_6 = 512;
 export const ACTION_MISSION_7 = 1024;
 export const ACTION_MISSION_8 = 2048;
-export const ACTION_FREE_FLIGHT = 4096;
-export const ACTION_COCKPIT = 8192;
+export const ACTION_MISSION_9 = 16384;
+export const ACTION_MISSION_10 = 32768;
+export const ACTION_FREE_FLIGHT = 65536;
+export const ACTION_COCKPIT = 131072;
 
 const ROLL_LEFT = new Set(['ArrowLeft', 'KeyA']);
 const ROLL_RIGHT = new Set(['ArrowRight', 'KeyD']);
@@ -69,7 +72,9 @@ export function createInput(target) {
     else if (event.code === 'Digit6' && !event.repeat) actions |= ACTION_MISSION_6;
     else if (event.code === 'Digit7' && !event.repeat) actions |= ACTION_MISSION_7;
     else if (event.code === 'Digit8' && !event.repeat) actions |= ACTION_MISSION_8;
-    else if (event.code === 'Digit9' && !event.repeat) actions |= ACTION_FREE_FLIGHT;
+    else if (event.code === 'Digit9' && !event.repeat) actions |= ACTION_MISSION_9;
+    else if (event.code === 'Digit0' && !event.repeat) actions |= ACTION_MISSION_10;
+    else if (event.code === 'KeyF' && !event.repeat) actions |= ACTION_FREE_FLIGHT;
     else if (event.code === 'KeyC' && !event.repeat) actions |= ACTION_COCKPIT;
     else return;
     event.preventDefault();

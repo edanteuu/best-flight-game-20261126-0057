@@ -1,7 +1,9 @@
 // The flight model: one small prop plane, flown by the numbers. Throttle sets the
 // target speed, pitch trades speed for altitude, bank turns the heading, and a
 // stall drops the nose when the wing runs out of speed. Fuel burns with throttle;
-// with an empty tank the engine quits and the sortie becomes a glide. This file
+// with an empty tank the engine quits and the sortie becomes a glide. v3 adds
+// ground effect: close to the ground the wing rides its own cushion of air and
+// the sink softens, so a held flare floats instead of dropping. This file
 // knows nothing about drawing or keys — it only moves the aircraft one step.
 
 import { PLANE, RUNWAY } from './config.js';
@@ -86,6 +88,15 @@ export function stepFlight(plane, steer, dt, world, wind) {
   if (!powered) climb = -PLANE.glideSink;
   if (plane.stalled) climb = Math.min(climb, -6);
   if (!plane.airborne && plane.speed < 62) climb = 0; // still on the ground roll
+  // Ground effect: within a wingspan of the ground the sink softens, strongest
+  // right above the strip — a held flare floats instead of dropping through.
+  if (plane.airborne && climb < 0) {
+    const agl = plane.y - world.groundHeight(plane.x, plane.z);
+    if (agl < PLANE.groundEffectHeight) {
+      const strength = 1 - agl / PLANE.groundEffectHeight;
+      climb *= 1 - PLANE.groundEffect * strength;
+    }
+  }
   plane.verticalSpeed = climb;
   plane.y += climb * dt;
 

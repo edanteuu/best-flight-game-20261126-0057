@@ -1,16 +1,19 @@
-// Nusa Airlift — a make.fun best-flight-game entry (Node 22, standard library only).
+// Nusa Airlift v3 — a make.fun best-flight-game entry (Node 22, standard library only).
 // The game is this directory's game/ folder, plain static files a desktop browser
 // loads offline (game/index.html and its ES modules, Three.js vendored locally
 // under game/vendor/, no CDN and no network request), and the program hands it in.
 // It copies game/ and screenshots/ from beside this file to /output and writes
 // /output/dossier.json, the summary the judge reads, with the vendored make.fun library.
 //
-// The game: a real-3D chase-view (plus cockpit-view) prop-plane courier over a
-// volcanic island archipelago. Fly glowing rings, mind fuel and damage, and land
-// on runway 36 — eight missions plus Free Flight (Ring Run, Island Hop, Storm
-// Landing, Cargo Chain, Rescue Pickup, Night Flight, Time Trial, Storm Crossing),
-// keyboard and mouse controls, synthesised WebAudio sound, and deterministic
-// screenshot poses via ?shot=start|play|rings|land.
+// The game: a real-3D chase-view (plus cockpit-view with live instruments)
+// prop-plane courier over a volcanic island archipelago. Fly glowing rings, mind
+// fuel and damage, and land on runway 36 — ten missions plus Free Flight (Ring Run,
+// Island Hop, Storm Landing, Cargo Chain, Rescue Pickup, Night Flight, Time Trial,
+// Storm Crossing, Volcano Survey, Golden Hour Cargo), rain and lightning in the
+// squall missions, a live minimap, a jungle of instanced trees and palms, a real
+// airfield with tower and hangar, a glowing lava crater, keyboard and mouse
+// controls, synthesised WebAudio sound, and deterministic screenshot poses via
+// ?shot=start|play|rings|land.
 // The program below is deliberately boring: it only copies files and writes the
 // dossier, so the same input always produces the same output bytes.
 //

@@ -1,7 +1,7 @@
 // Sound, synthesised live with WebAudio — no audio files. An engine hum that
-// follows the throttle, wind that grows with speed, a two-note chime when a ring
-// is flown, and a low thud for touchdown. Everything starts on the first user
-// gesture (browsers require it) and M toggles mute.
+// follows the throttle, wind that grows with speed, a rising whistle at high
+// airspeed, a two-note chime when a ring is flown, and a low thud for touchdown.
+// Everything starts on the first user gesture (browsers require it) and M toggles mute.
 
 export function createAudio() {
   let ctx = null;
@@ -9,6 +9,8 @@ export function createAudio() {
   let engineGain = null;
   let windGain = null;
   let windSource = null;
+  let whistleOsc = null;
+  let whistleGain = null;
   let muted = false;
   let started = false;
 
@@ -53,6 +55,15 @@ export function createAudio() {
       windFilter.connect(windGain);
       windGain.connect(ctx.destination);
       windSource.start();
+      // Whistle: a thin sine that rises with airspeed, for the fast dives.
+      whistleOsc = ctx.createOscillator();
+      whistleOsc.type = 'sine';
+      whistleOsc.frequency.value = 1200;
+      whistleGain = ctx.createGain();
+      whistleGain.gain.value = 0;
+      whistleOsc.connect(whistleGain);
+      whistleGain.connect(ctx.destination);
+      whistleOsc.start();
     } catch {
       ctx = null;
     }
@@ -63,12 +74,16 @@ export function createAudio() {
     if (!ctx || muted) {
       if (engineGain) engineGain.gain.value = 0;
       if (windGain) windGain.gain.value = 0;
+      if (whistleGain) whistleGain.gain.value = 0;
       return;
     }
     const t = ctx.currentTime;
     engineGain.gain.setTargetAtTime(airborne ? 0.05 + throttle * 0.09 : 0.02, t, 0.1);
     engineOsc.frequency.setTargetAtTime(55 + throttle * 90, t, 0.1);
     windGain.gain.setTargetAtTime(Math.min(0.12, (speedKnots / 200) * 0.12), t, 0.2);
+    const fast = Math.max(0, (speedKnots - 130) / 80);
+    whistleGain.gain.setTargetAtTime(airborne ? fast * 0.05 : 0, t, 0.2);
+    whistleOsc.frequency.setTargetAtTime(1100 + fast * 900, t, 0.2);
   }
 
   function tone(freq, at, dur, type, vol) {
@@ -135,6 +150,7 @@ export function createAudio() {
       muted = !muted;
       if (muted && engineGain) engineGain.gain.value = 0;
       if (muted && windGain) windGain.gain.value = 0;
+      if (muted && whistleGain) whistleGain.gain.value = 0;
       return muted;
     },
     isMuted() {
